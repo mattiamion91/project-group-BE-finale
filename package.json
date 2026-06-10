@@ -1,0 +1,24 @@
+{
+  "name": "project_group_e-commerce-be",
+  "version": "1.0.0",
+  "description": "Online shop for Italian agri-food products, with specialties from each region",
+  "repository": {
+    "type": "git",
+    "url": "projecy_group_e-commerce-BE"
+  },
+  "license": "ISC",
+  "author": "Gruppo 1",
+  "type": "commonjs",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node app.js",
+    "watch": "node --env-file=.env --watch app.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "mysql2": "^3.19.0",
+    "nodemailer": "^8.0.2"
+  }
+}
