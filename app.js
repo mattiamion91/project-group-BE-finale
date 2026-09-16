@@ -1,6 +1,6 @@
 const express = require('express');
 const app = express();
-const port = process.env.PORT;
+const port = process.env.PORT || 3000;
 
 //import del router dei prodotti
 const productRouter = require('./routers/productRouter');
@@ -30,7 +30,7 @@ const cors = require("cors");
 app.use(express.json());
 //attivazione CORS
 app.use(cors({
-    origin: "http://localhost:5173"
+    origin: process.env.CORS_ORIGIN || "http://localhost:5173"
 }));
 
 //attivazione della cartella public per uso file statici

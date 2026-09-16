@@ -1,42 +1,67 @@
 //importiamo la connessione del DB
 const connection = require("../data/db");
 
-// Creiamo una funzione helper che restituisce la query base
-// per selezionare i prodotti con il loro eventuale sconto.
-// In questo modo evitiamo di riscrivere sempre la stessa logica.
-// La query restituisce:
-// 1. Tutti i campi della tabella products
-// 2. Percentuale di sconto (0 se non presente)
-// 3. Prezzo finale calcolato in base allo sconto
-function baseProductSelect() {
-    return `
-        SELECT 
-            products.*,  -- tutti i campi del prodotto
+// Creiamo una funzione helper flessibile per costruire la query base dei prodotti
+// con opzioni per includere JOIN su categorie, regioni e sconti
+function buildProductBase(options = {}) {
+    const {
+        includeCategory = false,
+        includeRegion = false,
+        includeSales = true
+    } = options;
 
-            -- percentuale sconto, se non presente restituisce 0
-            COALESCE(s.discount_percentage, 0) AS discount_percentage,
+    // Parti della clausola SELECT
+    const selectParts = [
+        'products.*'
+    ];
 
-            -- prezzo finale calcolato: se c'è sconto sottrae dal prezzo originale
-            CASE 
-                WHEN s.discount_percentage IS NOT NULL
-                THEN products.price - (products.price * s.discount_percentage / 100)
-                ELSE products.price
-            END AS final_price
+    if (includeCategory) {
+        selectParts.push('categories.name AS nomi_categorie');
+    }
+    if (includeRegion) {
+        selectParts.push('regions.name AS nomi_regioni');
+    }
 
-        FROM products
+    // Aggiungiamo i campi dello sconto solo se includiamo la tabella sales
+    if (includeSales) {
+        selectParts.push(`
+        COALESCE(s.discount_percentage, 0) AS discount_percentage,
+        CASE
+            WHEN s.discount_percentage IS NOT NULL
+            THEN products.price - (products.price * s.discount_percentage / 100)
+            ELSE products.price
+        END AS final_price
+    `.trim());
+    }
 
-        -- join opzionale con la tabella sales per ottenere sconti attivi
-        LEFT JOIN sales s 
+    const select = selectParts.join(', ');
+
+    // Clausola FROM e JOIN
+    let from = 'FROM products';
+    let joins = '';
+
+    if (includeCategory) {
+        joins += '\nJOIN categories ON products.category_id = categories.id';
+    }
+    if (includeRegion) {
+        joins += '\nJOIN regions ON products.region_id = regions.id';
+    }
+    if (includeSales) {
+        joins += `
+        LEFT JOIN sales s
             ON products.id = s.product_id
             AND NOW() BETWEEN s.start_date AND s.end_date
-    `;
+        `;
+    }
+
+    return `SELECT ${select}\n${from}${joins}`;
 }
 
 // Funzione per ottenere tutti i prodotti dal database
 // Possiamo filtrare per:
 // - search → ricerca per nome prodotto
 // - category → categoria del prodotto
-// - region → regione del prodotto
+// - region → regione del producto
 function indexProducts(req, res) {
 
     // Prendiamo i parametri dalla query string
@@ -44,25 +69,7 @@ function indexProducts(req, res) {
 
     // Query principale che recupera prodotti con join su categorie e regioni
     let sql = `
-        SELECT 
-            products.*,
-            categories.name AS nomi_categorie,
-            regions.name AS nomi_regioni,
-
-            COALESCE(s.discount_percentage, 0) AS discount_percentage,
-            CASE 
-                WHEN s.discount_percentage IS NOT NULL
-                THEN products.price - (products.price * s.discount_percentage / 100)
-                ELSE products.price
-            END AS final_price
-
-        FROM products
-        JOIN categories ON products.category_id = categories.id
-        JOIN regions ON products.region_id = regions.id
-        LEFT JOIN sales s 
-            ON products.id = s.product_id
-            AND NOW() BETWEEN s.start_date AND s.end_date
-
+        ${buildProductBase({ includeCategory: true, includeRegion: true, includeSales: true })}
         WHERE 1=1  -- serve per concatenare i filtri dinamici
     `;
 
@@ -116,6 +123,7 @@ function indexProducts(req, res) {
 
     connection.query(sql, params, (err, results) => {
         if (err) {
+            console.error(err)
             // Se c'è un errore lato database, restituiamo errore 500
             return res.status(500).json({ error: 'Database query failed' });
         }
@@ -141,7 +149,6 @@ function indexProducts(req, res) {
 }
 
 
-
 // Restituisce i dettagli di un prodotto tramite ID
 function showProductById(req, res) {
 
@@ -150,7 +157,7 @@ function showProductById(req, res) {
 
     // Creiamo query usando la query base e filtrando per ID
     const sql = `
-        ${baseProductSelect()}
+        ${buildProductBase()}
         WHERE products.id = ?
     `;
 
@@ -179,7 +186,7 @@ function showProductBySlug(req, res) {
 
     // Query base filtrata per slug
     const sql = `
-        ${baseProductSelect()}
+        ${buildProductBase()}
         WHERE products.slug = ?
     `;
 
@@ -202,7 +209,7 @@ function showProductBySlug(req, res) {
 function getFavorites(req, res) {
 
     const sql = `
-        ${baseProductSelect()}
+        ${buildProductBase()}
         WHERE products.favorites = 1
         ORDER BY RAND()
     `;
@@ -225,7 +232,7 @@ function getFavorites(req, res) {
 function getOils(req, res) {
 
     const sql = `
-        ${baseProductSelect()}
+        ${buildProductBase()}
         WHERE products.category_id = 23
         ORDER BY RAND()
     `;
@@ -247,7 +254,7 @@ function getOils(req, res) {
 function getRandomProducts(req, res) {
 
     const sql = `
-        ${baseProductSelect()}
+        ${buildProductBase()}
         ORDER BY RAND()
     `;
 
@@ -260,9 +267,9 @@ function getRandomProducts(req, res) {
         }));
 
         res.json(products);
+
     });
 }
-
 
 
 // Restituisce prodotti filtrati per nome regione
@@ -271,8 +278,7 @@ function getProductsByRegionName(req, res) {
     const regionName = req.params.name;
 
     const sql = `
-        ${baseProductSelect()}
-        JOIN regions ON products.region_id = regions.id
+        ${buildProductBase({ includeRegion: true })}
         WHERE regions.name = ?
     `;
 
@@ -289,18 +295,20 @@ function getProductsByRegionName(req, res) {
 }
 
 
-
 // Restituisce fino a 4 prodotti correlati (stessa categoria o regione)
 function relatedProducts(req, res) {
 
     const { id } = req.params;
 
+    // Nota: questa query è complessa e non utilizza direttamente buildProductBase
+    // perché richiede un JOIN particolare tra prodotti (p1 e p2) e condizioni specifiche.
+    // Manteniamo la query originale per chiarezza, ma possiamo notare che potrebbe essere
+    // refactorizzata in futuro se necessario.
     const sql = `
-        SELECT DISTINCT 
+        SELECT DISTINCT
             p2.*,
-
             COALESCE(s.discount_percentage, 0) AS discount_percentage,
-            CASE 
+            CASE
                 WHEN s.discount_percentage IS NOT NULL
                 THEN p2.price - (p2.price * s.discount_percentage / 100)
                 ELSE p2.price
@@ -309,7 +317,7 @@ function relatedProducts(req, res) {
         FROM products p1
         JOIN products p2
             ON (p1.category_id = p2.category_id OR p1.region_id = p2.region_id)
-        LEFT JOIN sales s 
+        LEFT JOIN sales s
             ON p2.id = s.product_id
             AND NOW() BETWEEN s.start_date AND s.end_date
         WHERE p1.id = ?
@@ -329,7 +337,6 @@ function relatedProducts(req, res) {
         res.json(data);
     });
 }
-
 
 
 // Restituisce tutte le regioni con percorso immagine completo
@@ -368,7 +375,7 @@ function getDiscountedProducts(req, res) {
     const { sort } = req.query;
 
     let sql = `
-        ${baseProductSelect()}
+        ${buildProductBase()}
         WHERE COALESCE(s.discount_percentage, 0) > 0
     `;
 
@@ -411,7 +418,7 @@ function getDiscountedProducts(req, res) {
 
         res.json({
             totals: products.length,
-            results: products
+            results: results
         });
     });
 }
