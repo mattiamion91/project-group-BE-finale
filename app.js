@@ -30,7 +30,7 @@ const cors = require("cors");
 app.use(express.json());
 //attivazione CORS
 app.use(cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:5173"
+    origin: process.env.CORS_ORIGIN || "https://project-group-fe-finale.vercel.app/"
 }));
 
 //attivazione della cartella public per uso file statici
