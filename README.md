@@ -118,4 +118,8 @@ ISC
 
 ## Author
 
+<<<<<<< HEAD
 Gruppo 1
+=======
+Gruppo 1
+>>>>>>> aa9e0e5542915b0a86d6788e40a2f35c87be12bf
